@@ -49,6 +49,7 @@ statsd = DogStatsd(host=STATSD_HOST, port=STATSD_PORT)
 
 
 def send_metrics(redis_host: str, redis_port: int, tags):
+    print(redis_host)
     redis = StrictRedis(host=redis_host, port=redis_port)
     stats = redis.info()
     tags = [f"host:{host}"]
