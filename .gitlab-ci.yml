@@ -10,8 +10,8 @@ variables:
 helm-lint:
   stage: validate
   script:
-    - mv Chart/ Redis-Statsd # raname to avoid error
-    - helm lint Redis-Statsd --set image.tag=lint,environment=production
+    - mv Chart/ redis-statsd # raname to avoid error
+    - helm lint redis-statsd --set image.tag=lint,environment=production
 
 helm-dryrun:
   stage: validate
