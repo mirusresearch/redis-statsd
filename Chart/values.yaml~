@@ -1,0 +1,15 @@
+image:
+  repository: gcr.io/mirus-core
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+config:
+  - caboto_base
+  - halpin_base
+  - google_apikey
+  - sentry_dsn
+  - cognito_url
+  - cognito_id
+  - cognito_secret

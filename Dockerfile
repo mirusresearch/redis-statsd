@@ -1,7 +1,6 @@
-FROM python:2
+FROM python:3.7
 
 COPY . /usr/src/app
 WORKDIR /usr/src/app
 
-ENTRYPOINT [ "./redis-statsd.py" ]
-CMD [ "--help" ]
+RUN pip install -r pip.requirements.txt

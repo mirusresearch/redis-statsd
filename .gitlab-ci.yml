@@ -1,0 +1,39 @@
+stages:
+  - validate
+  - build
+  - deploy
+
+variables:
+  GCR_REPO: gcr.io/mirus-core
+  PROJECT_NAME: redis-statsd
+
+helm-lint:
+  stage: validate
+  script:
+    - mv Chart/ Redis-Statsd # raname to avoid error
+    - helm lint Redis-Statsd --set image.tag=lint,environment=production
+
+helm-dryrun:
+  stage: validate
+  script:
+    - helm upgrade $PROJECT_NAME-$CI_COMMIT_REF_NAME Chart/ --dry-run --debug --install --set=image.tag=$CI_COMMIT_SHA,environment=production --namespace=$PROJECT_NAME-$CI_COMMIT_REF_NAME
+
+build:
+  stage: build
+  script:
+    - /autologin.sh
+    - gcloud container clusters get-credentials production --zone us-central1-a --project mirus-core
+    - docker build -t $GCR_REPO/$PROJECT_NAME:$CI_COMMIT_SHA -t $GCR_REPO/$PROJECT_NAME:latest .
+    - docker push $GCR_REPO/$PROJECT_NAME:$CI_COMMIT_SHA
+    - docker push $GCR_REPO/$PROJECT_NAME:latest
+
+
+prod_deploy:
+  stage: deploy
+  only:
+    - master
+  script:
+    - /autologin.sh
+    - gcloud container clusters get-credentials production --zone us-central1-a --project mirus-core
+    - kubectl get po # needed or helm will not have right credentials... or something
+    - helm upgrade $PROJECT_NAME-$CI_COMMIT_REF_NAME Chart/ --install --set=image.tag=$CI_COMMIT_SHA,environment=production --set=replicaCount=3 --namespace=$PROJECT_NAME-$CI_COMMIT_REF_NAME

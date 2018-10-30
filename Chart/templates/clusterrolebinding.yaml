@@ -1,0 +1,17 @@
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: redis-statsd
+  labels:
+    app: {{ template "Chart.name" . }}
+    chart: {{ template "Chart.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: redis-statsd
+subjects:
+  - kind: ServiceAccount
+    name: redis-statsd
+    namespace: {{ .Release.Namespace }}

@@ -1,56 +1,18 @@
 #!/usr/bin/env python
 
-import argparse
+import os
 import socket
 import sys
 import time
+from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 
-parser = argparse.ArgumentParser(
-    description="Collect metrics from Redis and emit to StatsD"
-)
-parser.add_argument(
-    "--period",
-    dest="period",
-    type=int,
-    default=20,
-    help="The period at which to collect and emit metrics",
-)
-parser.add_argument(
-    "--prefix",
-    dest="prefix",
-    type=str,
-    default="redis",
-    help="The prefix to use for metric names",
-)
-parser.add_argument(
-    "--redis-host",
-    dest="redis_host",
-    type=str,
-    default="localhost:6379",
-    help="The address and port of the Redis host to connect to",
-)
-parser.add_argument(
-    "--statsd-host",
-    dest="statsd_host",
-    type=str,
-    default="localhost:8125",
-    help="The address and port of the StatsD host to connect to",
-)
-parser.add_argument(
-    "--global-tags",
-    dest="global_tags",
-    type=str,
-    help="Global tags to add to all metrics",
-)
-parser.add_argument(
-    "--no-tags",
-    dest="tags",
-    action="store_false",
-    help="Disable tags for use with DogStatsD",
-)
-
-args = parser.parse_args()
-
+GLOBAL_TAGS = os.environ.get("GLOBAL_TAGS")
+NAMESPACE = os.environ.get("NAMESPACE", "redis")
+PERIOD = os.environ.get("PERIOD", 20)
+PREFIX = os.environ.get("PREFIX", "redis")
+STATSD_HOST = os.environ.get("NODE_IP")
+STATSD_PORT = int(os.environ.get("STATSD_PORT", 8125))
 
 GAUGES = {
     "blocked_clients": "blocked_clients",
@@ -91,15 +53,15 @@ def send_metric(name, mtype, value, tags=None):
     if tags is None:
         tags = []
 
-    if args.global_tags is not None:
-        tags.extend(args.global_tags.split(","))
+    if GLOBAL_TAGS is not None:
+        tags.extend(GLOBAL_TAGS.split(","))
 
-    if len(tags) > 0 and args.tags:
+    if len(tags) > 0:
         tagstring = "|#{}".format(",".join(tags))
 
     if mtype == "c":
         # For counters we will calculate our own deltas.
-        mkey = "{}:{}".format(name, tagstring)
+        mkey = f"{name}:{tagstring}"
         if mkey in last_seens:
             # global finalvalue
             # calculate our deltas and don't go below 0
@@ -110,9 +72,8 @@ def send_metric(name, mtype, value, tags=None):
             finalvalue = 0
         last_seens[mkey] = value
 
-    met = "{}:{}|{}{}".format(name, finalvalue, mtype, tagstring)
-    (statsd_host, statsd_port) = args.statsd_host.split(":")
-    out_sock.sendto(met, (statsd_host, int(statsd_port)))
+    met = f"{name}:{finalvalue}|{mtype}{tagstring}"
+    out_sock.sendto(met, (STATSD_HOST, STATSD_PORT))
 
 
 def linesplit(socket):
@@ -134,10 +95,9 @@ def linesplit(socket):
         yield buffer
 
 
-while True:
+def send_metrics(redis_host: str, redis_port: int):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    (redis_host, redis_port) = args.redis_host.split(":")
-    s.connect((redis_host, int(redis_port)))
+    s.connect((redis_host, redis_port))
     s.send("INFO\n")
 
     stats = {}
@@ -164,30 +124,54 @@ while True:
 
     for g in GAUGES:
         if g in stats:
-            send_metric("{}.{}".format(args.prefix, g), "g", float(stats[g]))
+            send_metric(f"{PREFIX}.{g}", "g", float(stats[g]), [f"host={host}"])
 
     for c in COUNTERS:
         if c in stats:
-            send_metric("{}.{}".format(args.prefix, c), "c", float(stats[c]))
+            send_metric(f"{PREFIX}.{c}", "c", float(stats[c]), [f"host={host}"])
 
     for ks in stats["keyspaces"]:
         for kc in KEYSPACE_COUNTERS:
             if kc in stats["keyspaces"][ks]:
                 send_metric(
-                    "{}.keyspace.{}".format(args.prefix, kc),
+                    "{PREFIX}.keyspace.{kc}",
                     "c",
                     float(stats["keyspaces"][ks][kc]),
-                    ["keyspace={}".format(ks)],
+                    [f"keyspace={ks}", f"host={host}"],
                 )
 
         for kg in KEYSPACE_GAUGES:
             if kg in stats["keyspaces"][ks]:
                 send_metric(
-                    "{}.keyspace.{}".format(args.prefix, kg),
+                    "{PREFIX}.keyspace.{kg}",
                     "g",
                     float(stats["keyspaces"][ks][kg]),
-                    ["keyspace={}".format(ks)],
+                    [f"keyspace={ks}", f"host={host}"],
                 )
 
     out_sock.close()
-    time.sleep(10)
+
+
+def send_error_metric(host: str):
+    send_metric(f"{PREFIX}.error", "c", 1, [f"host={host}"])
+
+
+def main():
+    config.load_kube_config()
+    k8_api_instance = client.CoreV1Api()
+
+    while True:
+        api_response = k8_api_instance.list_namespaced_service(NAMESPACE)
+
+        for svc in api_response.items:
+            host = f"{svc.metadata.name}.{namespace}.svc.cluster.local"
+            port = svc.spec.ports[0].port
+
+            try:
+                send_metrics(host, port)
+            except Exception as e:
+                send_error_metric(host)
+        time.sleep(PERIOD)
+
+
+main()
