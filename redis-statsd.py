@@ -4,7 +4,7 @@ import os
 import socket
 import sys
 import time
-from datadog import dogstatsd.base.DogStatsd
+from datadog.dogstatsd.base import DogStatsd
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from redis import StrictRedis
