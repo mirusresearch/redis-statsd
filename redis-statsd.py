@@ -47,7 +47,7 @@ KEYSPACE_GAUGES = {"avg_ttl": "avg_ttl", "keys": "keys"}
 last_seens = {}
 
 
-def send_metric(name, mtype, value, tags=None):
+def send_metric(out_sock, name, mtype, value, tags=None):
     tagstring = ""
     finalvalue = value
     if tags is None:
@@ -95,7 +95,7 @@ def linesplit(socket):
         yield buffer
 
 
-def send_metrics(redis_host: str, redis_port: int):
+def send_metrics(out_sock, redis_host: str, redis_port: int):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((redis_host, redis_port))
     s.send("INFO\n")
@@ -120,20 +120,23 @@ def send_metrics(redis_host: str, redis_port: int):
 
     s.close()
 
-    out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
     for g in GAUGES:
         if g in stats:
-            send_metric(f"{PREFIX}.{g}", "g", float(stats[g]), [f"host={host}"])
+            send_metric(
+                out_sock, f"{PREFIX}.{g}", "g", float(stats[g]), [f"host={host}"]
+            )
 
     for c in COUNTERS:
         if c in stats:
-            send_metric(f"{PREFIX}.{c}", "c", float(stats[c]), [f"host={host}"])
+            send_metric(
+                out_sock, f"{PREFIX}.{c}", "c", float(stats[c]), [f"host={host}"]
+            )
 
     for ks in stats["keyspaces"]:
         for kc in KEYSPACE_COUNTERS:
             if kc in stats["keyspaces"][ks]:
                 send_metric(
+                    out_sock,
                     "{PREFIX}.keyspace.{kc}",
                     "c",
                     float(stats["keyspaces"][ks][kc]),
@@ -143,17 +146,16 @@ def send_metrics(redis_host: str, redis_port: int):
         for kg in KEYSPACE_GAUGES:
             if kg in stats["keyspaces"][ks]:
                 send_metric(
+                    out_sock,
                     "{PREFIX}.keyspace.{kg}",
                     "g",
                     float(stats["keyspaces"][ks][kg]),
                     [f"keyspace={ks}", f"host={host}"],
                 )
 
-    out_sock.close()
 
-
-def send_error_metric(host: str):
-    send_metric(f"{PREFIX}.error", "c", 1, [f"host={host}"])
+def send_error_metric(out_sock, host: str):
+    send_metric(out_sock, f"{PREFIX}.error", "c", 1, [f"host={host}"])
 
 
 def main():
@@ -161,6 +163,7 @@ def main():
     k8_api_instance = client.CoreV1Api()
 
     while True:
+        out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         api_response = k8_api_instance.list_namespaced_service(NAMESPACE)
 
         for svc in api_response.items:
@@ -168,9 +171,11 @@ def main():
             port = svc.spec.ports[0].port
 
             try:
-                send_metrics(host, port)
+                send_metrics(out_sock, host, port)
             except Exception as e:
-                send_error_metric(host)
+                send_error_metric(out_sock, host)
+
+        out_sock.close()
         time.sleep(PERIOD)
 
 
