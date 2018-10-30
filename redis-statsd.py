@@ -4,7 +4,7 @@ import os
 import socket
 import sys
 import time
-import datadog
+from datadog import dogstatsd.base.DogStatsd
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from redis import StrictRedis
@@ -44,7 +44,8 @@ COUNTERS = [
     "total_connections_received",
 ]
 
-statsd = datadog.statsd(host=STATSD_HOST, port=STATSD_PORT)
+
+statsd = DogStatsd(host=STATSD_HOST, port=STATSD_PORT)
 
 
 def send_metrics(redis_host: str, redis_port: int, tags):
