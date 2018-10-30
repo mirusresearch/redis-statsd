@@ -164,7 +164,7 @@ def main():
         api_response = k8_api_instance.list_namespaced_service(NAMESPACE)
 
         for svc in api_response.items:
-            host = f"{svc.metadata.name}.{namespace}.svc.cluster.local"
+            host = f"{svc.metadata.name}.{NAMESPACE}.svc.cluster.local"
             port = svc.spec.ports[0].port
 
             try:
