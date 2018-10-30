@@ -120,6 +120,8 @@ def send_metrics(out_sock, redis_host: str, redis_port: int):
 
     s.close()
 
+    print(stats)
+
     for g in GAUGES:
         if g in stats:
             send_metric(
@@ -155,7 +157,7 @@ def send_metrics(out_sock, redis_host: str, redis_port: int):
 
 
 def send_error_metric(out_sock, host: str):
-    send_metric(out_sock, f"{PREFIX}.error", "c", 1, [f"host={host}"])
+    send_metric(out_sock, f"{PREFIX}.error", "c", float(1), [f"host={host}"])
 
 
 def main():
@@ -173,6 +175,7 @@ def main():
             try:
                 send_metrics(out_sock, host, port)
             except Exception as e:
+                print(e)
                 send_error_metric(out_sock, host)
 
         out_sock.close()
