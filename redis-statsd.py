@@ -157,7 +157,7 @@ def send_error_metric(host: str):
 
 
 def main():
-    config.load_kube_config()
+    config.load_incluster_config()
     k8_api_instance = client.CoreV1Api()
 
     while True:

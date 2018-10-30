@@ -16,6 +16,7 @@ spec:
         app: {{ template "Chart.name" . }}
         release: {{ .Release.Name }}
     spec:
+      serviceAccountName: redis-statsd
       containers:
         - name: app
           image: {{ .Values.image.repository }}/redis-statsd:{{ .Values.image.tag }}
